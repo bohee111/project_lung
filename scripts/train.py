@@ -29,9 +29,9 @@ def log_tokenizer_info(cfg: dict, tokenizer) -> None:
 
     vocab_file = getattr(tokenizer, "vocab_file", None)
     print("[tokenizer] vocab_file:", vocab_file)
-    fallback_vocab = Path(__file__).resolve().parents[1] / "assets" / "minibert_vocab.txt"
-    print("[tokenizer] fallback_vocab:", fallback_vocab)
-    print("[tokenizer] using_fallback_vocab:", str(vocab_file) == str(fallback_vocab))
+    # fallback_vocab = Path(__file__).resolve().parents[1] / "assets" / "minibert_vocab.txt"
+    # print("[tokenizer] fallback_vocab:", fallback_vocab)
+    # print("[tokenizer] using_fallback_vocab:", str(vocab_file) == str(fallback_vocab))
 
     special = tok_cfg.get("special_tokens", {})
     for key, token in special.items():
@@ -78,6 +78,7 @@ def main() -> None:
     tokenizer = get_tokenizer(cfg)
     log_tokenizer_info(cfg, tokenizer)
     tcfg = TextConfig(**cfg["tokenizer"]["special_tokens"])
+    text_mode = cfg["training"].get("text_mode", "full")
 
     dataset = ChestXrayDataset(
         csv_path=cfg["paths"]["data_csv"],
@@ -87,8 +88,10 @@ def main() -> None:
         max_length=cfg["tokenizer"]["max_length"],
         chex_csv_path=cfg["paths"].get("chexpert_csv"),
         chex_label_mode=cfg["model"].get("diag_loss_type", "bce"),
+        text_mode=text_mode,
         w_find=cfg["training"]["w_find"],
         w_imp=cfg["training"]["w_imp"],
+        w_imp_token=cfg["training"].get("w_imp_token"),
     )
 
     # 데이터 로더 구성.
@@ -121,8 +124,10 @@ def main() -> None:
             max_length=cfg["tokenizer"]["max_length"],
             chex_csv_path=eval_chex_csv,
             chex_label_mode=cfg["model"].get("diag_loss_type", "bce"),
+            text_mode=text_mode,
             w_find=cfg["training"]["w_find"],
             w_imp=cfg["training"]["w_imp"],
+            w_imp_token=cfg["training"].get("w_imp_token"),
         )
         eval_loader = DataLoader(
             eval_dataset,
@@ -153,6 +158,11 @@ def main() -> None:
         diag_classes=cfg["model"]["diag_classes"],
         n_visual_tokens=cfg["model"]["n_visual_tokens"],
         n_diag_tokens=cfg["model"]["n_diag_tokens"],
+        decoder_type=cfg["model"].get("decoder_type", "custom"),
+        decoder_name_or_path=cfg["model"].get("decoder_name_or_path"),
+        decoder_local_files_only=cfg["model"].get("decoder_local_files_only", False),
+        decoder_trust_remote_code=cfg["model"].get("decoder_trust_remote_code", False),
+        decoder_revision=cfg["model"].get("decoder_revision"),
         visual_encoder=cfg["model"].get("visual_encoder", "resnet50"),
         visual_encoder_backend=cfg["model"].get("visual_encoder_backend", "timm"),
         visual_pretrained=cfg["model"]["visual_pretrained"],
