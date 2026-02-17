@@ -48,6 +48,9 @@ pip install -r /home/elicer/project_s/project_lung/requirements.txt
 ### 각 스크립트에 대한 설명 
 - `scripts/train.py`: 실데이터 학습 및 체크포인트/로그 저장
 - `scripts/eval.py`: 체크포인트 평가 및 (옵션) eval loss 계산
+  - 텍스트 지표: BLEU, ROUGE-L, (설정 시) BERTScore P/R/F1
+  - CheXpert 라벨 지표: accuracy, macro F1, micro F1
+  - (옵션) loss: eval_loss, eval_gen_loss, eval_diag_loss
 - `scripts/infer.py`: 단일 이미지 추론, 마스크 저장 옵션 포함
 - `scripts/generate_reports.py`: eval CSV 전체에 대해 리포트 생성 후 CSV 저장
 - `scripts/grounding_generate_reports.py`: 어텐션 기반 마스킹 전/후 리포트 생성 및 오버레이 저장
@@ -58,7 +61,7 @@ pip install -r /home/elicer/project_s/project_lung/requirements.txt
 ```bash
 conda activate lung310
 cd /home/elicer/project_s/project_lung
-python -m scripts.infer --config config.yaml --checkpoint outputs/test1/checkpoints/epoch_1.pt --image /home/elicer/project_s/project_lung/rawdata/eval_image/30010.jpg --device cuda 
+python -m scripts.infer --config config.yaml --checkpoint outputs/test1/checkpoints/epoch_20.pt --image /home/elicer/project_s/project_lung/rawdata/eval_image/30010.jpg --device cuda 
 ```
 
 ### src에 관한 간단한 설명
@@ -84,6 +87,7 @@ python -m scripts.infer --config config.yaml --checkpoint outputs/test1/checkpoi
 - `paths.checkpoint_dir`: 체크포인트 저장 폴더
 - `tokenizer.name_or_path`: 토크나이저 이름 또는 로컬 경로(예: `bert-base-uncased`)
 - `tokenizer.local_files_only`: 로컬 캐시만 사용(true면 온라인 다운로드 금지, 실패 시 `assets/minibert_vocab.txt`로 fallback).
+- `tokenizer.use_fast`: fast tokenizer 사용 여부
 - `tokenizer.max_length`: 텍스트 최대 토큰 길이
 - `tokenizer.special_tokens.*`: BOS/EOS/PAD 및 Findings/Impression 구분 토큰
 - `segmentation.model_path`: 세그멘터 체크포인트 경로(있으면 로드)
@@ -92,14 +96,19 @@ python -m scripts.infer --config config.yaml --checkpoint outputs/test1/checkpoi
 - `segmentation.use_dummy_if_missing`: 세그멘터 없을 때 더미 마스크 사용 여부
 - `segmentation.device`: 세그멘터 실행 디바이스(`cuda`/`cpu`)
 - `segmentation.local_view_mode`: 로컬 뷰 생성 방식(`bbox` 또는 `mask`)
+- `model.decoder_type`: 디코더 종류(`custom`, `gpt2`, `biogpt`, `hf`)
+- `model.decoder_name_or_path`: HF 디코더 직접 지정 시 모델 ID/경로
+- `model.decoder_local_files_only`: HF 디코더 로컬 캐시만 사용 여부
+- `model.decoder_trust_remote_code`: HF 디코더 원격 코드 실행 허용 여부
+- `model.decoder_revision`: HF 디코더 모델 revision/branch/tag
 - `model.visual_encoder`: 비전 백본(`resnet50`, `dinov2_vits14`, `dinov2_vitb14`, `dinov2_vitl14`, `dinov2_vitg14`)
 - `model.visual_encoder_backend`: DINOv2 로딩 방식(`timm` 또는 `torchhub`)
 - `model.visual_pretrained`: 비전 백본 사전학습 가중치 사용 여부
 - `model.freeze_encoder`: 비전 인코더 동결 여부
 - `model.diag_loss_type`: 진단 라벨 손실 타입.
     - `bce` : 각 라벨 독립 이진 분류(BCEWithLogits)
-    - `ce3`=3‑class CE
-    - `ce4`=4‑class CE. 
+    - `ce3` : 3‑class CE
+    - `ce4` : 4‑class CE. 
         - 클래스 인덱스 매핑: `ce3`/`ce4` 모두 `0=neg`, `1=pos`, `2=uncertain`, `3=na(ce4만 사용)`
         - 데이터 변환: 원본 CheXpert 값에서 `-1`(uncertain)는 `2`, NaN는`0`(ce3) 또는 `3`(ce4), `0/1`은 그대로 유지
 - `model.d_model`: 디코더 모델 차원
@@ -120,6 +129,7 @@ python -m scripts.infer --config config.yaml --checkpoint outputs/test1/checkpoi
 - `training.lambda_diagnosis`: 진단 손실 가중치
 - `training.w_find`: Findings 구간 손실 가중치
 - `training.w_imp`: Impression 구간 손실 가중치
+- `training.w_imp_token`: `<IMPRESSION>` 토큰 가중치(null이면 `w_imp` 사용)
 - `training.num_workers`: DataLoader 워커 수
 - `training.pin_memory`: DataLoader pin_memory 여부
 - `training.persistent_workers`: DataLoader persistent_workers 여부
@@ -140,7 +150,10 @@ python -m scripts.infer --config config.yaml --checkpoint outputs/test1/checkpoi
 - `evaluation.repetition_penalty`: 반복 페널티
 - `evaluation.no_repeat_ngram_size`: 반복 금지 n-gram 크기
 - `evaluation.stop_on_eos`: EOS 토큰에서 중지 여부
-- `evaluation.prompt_mode`: 프롬프트 모드(`impression_only` 또는 `findings_impression`)
+- `evaluation.prompt_mode`: 프롬프트 모드(`impression_only`, `findings_impression`, `first_findings`)
+- `evaluation.max_findings_len`: `first_findings`에서 Impression 강제 전환 기준(0이면 비활성)
+- `evaluation.impression_bias`: `first_findings`에서 `<IMPRESSION>` 토큰 logit bias
+- `evaluation.impression_bias_start`: bias 적용 시작 길이(null이면 `max_findings_len//2`)
 - `evaluation.semantic_metric`: 시맨틱 지표(`bertscore` 또는 `none`)
 - `evaluation.bertscore_lang`: BERTScore 언어 코드(예: `en-sci`)
 - `evaluation.bertscore_model`: BERTScore 계산 모델(예: `allenai/scibert_scivocab_uncased`)
@@ -178,7 +191,7 @@ cd /home/elicer/project_s/project_lung
 python -m scripts.train --config config.yaml 
 
 # eval을 위한 리포트 생성 (python -m scripts.generate_reports -h로 옵션 확인 가능)
-python -m scripts.generate_reports --config config.yaml --ckpt outputs/test1/checkpoints/epoch_1.pt --device cuda
+python -m scripts.generate_reports --config config.yaml --ckpt outputs/test1/checkpoints/epoch_20.pt --device cuda
 
 # 예측 리포트 라벨링
 conda activate chexpert-label

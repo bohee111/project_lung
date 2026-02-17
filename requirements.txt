@@ -2,6 +2,7 @@ datasets
 opencv-python
 albumentations
 timm
+sacremoses
 torch==2.5.1
 torchvision==0.20.1
 transformers==4.38

@@ -13,10 +13,11 @@ paths:
   output_dir: outputs/test1 # checkpoint와 log의 저장 경로
   checkpoint_dir: outputs/test1/checkpoints # checkpoint 저장 경로
 
-# Tokenizer (BERT 계열)
+# Tokenizer 
 tokenizer:
-  name_or_path: bert-base-uncased #토크나이저 로드 (ID 입력 or 파일 path)
+  name_or_path: microsoft/BioGPT #토크나이저 로드 (bert-base-uncased | gpt2 | microsoft/BioGPT)
   local_files_only: false #로컬 파일 사용 여부 (디버깅 용: True)
+  use_fast: true
   max_length: 256 #최대 길이
   special_tokens:
     bos: "<BOS>"
@@ -34,12 +35,17 @@ segmentation:
   local_view_mode: bbox # 어떻게 자를 것인지 설정 (bbox|mask) > bbox 권장
 
 model:
+  decoder_type: biogpt  # custom | gpt2 | biogpt | hf
+  decoder_name_or_path: null  # hf에서 직접 지정할 때 사용
+  decoder_local_files_only: false
+  decoder_trust_remote_code: false
+  decoder_revision: null
   visual_encoder: dinov2_vits14  # resnet50 | dinov2_vits14 | dinov2_vitb14 | dinov2_vitl14 | dinov2_vitg14
   visual_encoder_backend: torchhub  # timm | torchhub #torchhub 권장
   visual_pretrained: true 
   freeze_encoder: true
   diag_loss_type: ce4  # bce | ce3 | ce4
-  d_model: 384
+  d_model: 384  # HF 디코더 사용 시 hidden_size로 자동 대체됨
   n_heads: 8
   n_layers: 6
   dropout: 0.1
@@ -50,19 +56,20 @@ model:
 training:
   batch_size: 16
   epochs: 50
-  lr: 5.0e-5
+  lr: 2.0e-5
   weight_decay: 5.0e-4
   optimizer: adamw
   momentum: null
   nesterov: null
   log_path: /home/elicer/project_s/project_lung/outputs/test1/logs/train_log_testing.csv
-  lambda_diagnosis: 0.5
+  lambda_diagnosis: 0.3
   w_find: 1.0
   w_imp: 5.0
+  w_imp_token: 8.0  # <IMPRESSION> 토큰 가중치 (null이면 w_imp 사용)
   num_workers: 4
-  pin_memory: false
-  persistent_workers: false
-  mp_start_method: null  # null|spawn|fork|forkserver
+  pin_memory: true
+  persistent_workers: true
+  mp_start_method: spawn  # null|spawn|fork|forkserver
   amp: true
   amp_dtype: bf16  # bf16|fp16
   tf32: true
@@ -72,7 +79,7 @@ training:
 
 evaluation:
   batch_size: 8
-  max_gen_len: 96
+  max_gen_len: 192
   min_gen_len: 0
   do_sample: false
   temperature: 1.0
@@ -81,7 +88,10 @@ evaluation:
   repetition_penalty: 1.2
   no_repeat_ngram_size: 4
   stop_on_eos: true
-  prompt_mode: findings_impression  # impression_only | findings_impression
+  prompt_mode: first_findings  # impression_only | findings_impression | first_findings
+  max_findings_len: 0  # first_findings에서 Impression 강제 전환 기준(0이면 비활성)
+  impression_bias: 2.5  # first_findings에서 <IMPRESSION> 토큰 logit bias
+  impression_bias_start: 160  # bias 적용 시작 길이(null이면 max_findings_len//2)
   semantic_metric: bertscore  # none | bertscore
   bertscore_lang: en-sci
   bertscore_model: allenai/scibert_scivocab_uncased  # 다른 모델 픽스 가능
