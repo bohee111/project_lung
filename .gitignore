@@ -16,3 +16,12 @@ venv/
 __pycache__/
 *.pyc
 .env
+
+# ignore experiment artifacts & datasets
+outputs/
+rawdata/
+*.zip
+*.tar.gz
+*.tgz
+Miniconda3-*.sh
+
