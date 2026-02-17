@@ -69,6 +69,11 @@ def main() -> None:
         diag_classes=cfg["model"]["diag_classes"],
         n_visual_tokens=cfg["model"]["n_visual_tokens"],
         n_diag_tokens=cfg["model"]["n_diag_tokens"],
+        decoder_type=cfg["model"].get("decoder_type", "custom"),
+        decoder_name_or_path=cfg["model"].get("decoder_name_or_path"),
+        decoder_local_files_only=cfg["model"].get("decoder_local_files_only", False),
+        decoder_trust_remote_code=cfg["model"].get("decoder_trust_remote_code", False),
+        decoder_revision=cfg["model"].get("decoder_revision"),
         visual_encoder=cfg["model"].get("visual_encoder", "resnet50"),
         visual_encoder_backend=cfg["model"].get("visual_encoder_backend", "timm"),
         visual_pretrained=cfg["model"]["visual_pretrained"],
@@ -84,6 +89,7 @@ def main() -> None:
 
     eval_cfg = cfg.get("evaluation", {})
     max_len = eval_cfg.get("max_gen_len", 128)
+    prompt_mode = eval_cfg.get("prompt_mode", "impression_only")
     gen_kwargs = {
         "max_len": int(max_len),
         "min_len": int(eval_cfg.get("min_gen_len", 0)),
@@ -94,21 +100,37 @@ def main() -> None:
         "repetition_penalty": float(eval_cfg.get("repetition_penalty", 1.0)),
         "no_repeat_ngram_size": int(eval_cfg.get("no_repeat_ngram_size", 0)),
         "stop_on_eos": bool(eval_cfg.get("stop_on_eos", True)),
-        "prompt_mode": eval_cfg.get("prompt_mode", "impression_only"),
+        "prompt_mode": prompt_mode,
+        "max_findings_len": int(eval_cfg.get("max_findings_len", 0)),
+        "impression_bias": float(eval_cfg.get("impression_bias", 0.0)),
+        "impression_bias_start": eval_cfg.get("impression_bias_start"),
     }
     out_path = Path(out_csv)
     out_path.parent.mkdir(parents=True, exist_ok=True)
 
     with out_path.open("w", newline="", encoding="utf-8") as f:
         writer = csv.writer(f, quoting=csv.QUOTE_ALL)
+        first_findings = str(prompt_mode or "").lower().replace(" ", "_") in {
+            "first_findings",
+            "first_finding",
+            "findings_first",
+        }
+        sample_idx = 0
         with torch.inference_mode():
             pbar = tqdm(total=len(dataset), desc="generate", unit="img")
             for batch in loader:
                 images = batch["image"].to(device)
                 for i in range(images.shape[0]):
                     out = model.generate(images[i : i + 1], tokenizer, device=device, **gen_kwargs)
-                    text = out["text"].replace("\n", " ").strip()
+                    text = out["text"]
+                    if first_findings:
+                        has_imp = bool(out.get("has_impression", False))
+                        print(f"[impression_token] idx={sample_idx} has_impression={has_imp}")
+                        if has_imp:
+                            text = out.get("impression_text", text)
+                    text = text.replace("\n", " ").strip()
                     writer.writerow([text])
+                    sample_idx += 1
                 pbar.update(images.shape[0])
             pbar.close()
 
