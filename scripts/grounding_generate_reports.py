@@ -55,6 +55,7 @@ def main() -> None:
 
     eval_cfg = cfg.get("evaluation", {})
     grounding_cfg = cfg.get("grounding", {})
+    prompt_mode = eval_cfg.get("prompt_mode", "impression_only")
     gen_kwargs = {
         "max_len": int(eval_cfg.get("max_gen_len", 128)),
         "min_len": int(eval_cfg.get("min_gen_len", 0)),
@@ -65,7 +66,10 @@ def main() -> None:
         "repetition_penalty": float(eval_cfg.get("repetition_penalty", 1.0)),
         "no_repeat_ngram_size": int(eval_cfg.get("no_repeat_ngram_size", 0)),
         "stop_on_eos": bool(eval_cfg.get("stop_on_eos", True)),
-        "prompt_mode": eval_cfg.get("prompt_mode", "impression_only"),
+        "prompt_mode": prompt_mode,
+        "max_findings_len": int(eval_cfg.get("max_findings_len", 0)),
+        "impression_bias": float(eval_cfg.get("impression_bias", 0.0)),
+        "impression_bias_start": eval_cfg.get("impression_bias_start"),
     }
 
     out_orig = Path(grounding_cfg.get("out_orig_csv", args.out_orig_csv))
@@ -94,6 +98,11 @@ def main() -> None:
         diag_classes=cfg["model"]["diag_classes"],
         n_visual_tokens=cfg["model"]["n_visual_tokens"],
         n_diag_tokens=cfg["model"]["n_diag_tokens"],
+        decoder_type=cfg["model"].get("decoder_type", "custom"),
+        decoder_name_or_path=cfg["model"].get("decoder_name_or_path"),
+        decoder_local_files_only=cfg["model"].get("decoder_local_files_only", False),
+        decoder_trust_remote_code=cfg["model"].get("decoder_trust_remote_code", False),
+        decoder_revision=cfg["model"].get("decoder_revision"),
         visual_encoder=cfg["model"].get("visual_encoder", "resnet50"),
         visual_encoder_backend=cfg["model"].get("visual_encoder_backend", "timm"),
         visual_pretrained=cfg["model"]["visual_pretrained"],
@@ -115,6 +124,12 @@ def main() -> None:
         overlay_dir.mkdir(parents=True, exist_ok=True)
 
     transform = build_image_transform()
+
+    first_findings = str(prompt_mode or "").lower().replace(" ", "_") in {
+        "first_findings",
+        "first_finding",
+        "findings_first",
+    }
 
     with out_orig.open("w", newline="", encoding="utf-8") as f_orig, out_masked.open(
         "w", newline="", encoding="utf-8"
@@ -148,8 +163,16 @@ def main() -> None:
                     masked.unsqueeze(0).to(device), tokenizer, device=device, **gen_kwargs
                 )
 
-                w_orig.writerow([out["text"].replace("\n", " ").strip()])
-                w_masked.writerow([masked_out["text"].replace("\n", " ").strip()])
+                orig_text = out["text"]
+                masked_text = masked_out["text"]
+                if first_findings:
+                    if bool(out.get("has_impression", False)):
+                        orig_text = out.get("impression_text", orig_text)
+                    if bool(masked_out.get("has_impression", False)):
+                        masked_text = masked_out.get("impression_text", masked_text)
+
+                w_orig.writerow([orig_text.replace("\n", " ").strip()])
+                w_masked.writerow([masked_text.replace("\n", " ").strip()])
 
     print(f"saved original reports to {out_orig}")
     print(f"saved masked reports to {out_masked}")
