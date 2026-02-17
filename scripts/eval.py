@@ -43,6 +43,7 @@ def main() -> None:
     cfg = load_config(args.config)
     tokenizer = get_tokenizer(cfg)
     tcfg = TextConfig(**cfg["tokenizer"]["special_tokens"])
+    eval_cfg = cfg.get("evaluation", {})
 
     eval_csv = cfg["paths"].get("eval_csv", cfg["paths"]["data_csv"])
     eval_chex_csv = cfg["paths"].get("eval_chexpert_csv")
@@ -55,8 +56,10 @@ def main() -> None:
         max_length=cfg["tokenizer"]["max_length"],
         chex_csv_path=eval_chex_csv,
         chex_label_mode=cfg["model"].get("diag_loss_type", "bce"),
+        text_mode=eval_cfg.get("text_mode", "full"),
         w_find=cfg["training"].get("w_find", 1.0),
         w_imp=cfg["training"].get("w_imp", 3.0),
+        w_imp_token=cfg["training"].get("w_imp_token"),
     )
 
     # 평가 데이터 로더.
@@ -82,15 +85,20 @@ def main() -> None:
             n_layers=cfg["model"]["n_layers"],
             dropout=cfg["model"]["dropout"],
             diag_classes=cfg["model"]["diag_classes"],
-        n_visual_tokens=cfg["model"]["n_visual_tokens"],
-        n_diag_tokens=cfg["model"]["n_diag_tokens"],
-        visual_encoder=cfg["model"].get("visual_encoder", "resnet50"),
-        visual_encoder_backend=cfg["model"].get("visual_encoder_backend", "timm"),
-        visual_pretrained=cfg["model"]["visual_pretrained"],
-        freeze_encoder=cfg["model"].get("freeze_encoder", False),
-        diag_loss_type=cfg["model"].get("diag_loss_type", "bce"),
-        segmentation_cfg=cfg.get("segmentation"),
-    ).to(device)
+            n_visual_tokens=cfg["model"]["n_visual_tokens"],
+            n_diag_tokens=cfg["model"]["n_diag_tokens"],
+            decoder_type=cfg["model"].get("decoder_type", "custom"),
+            decoder_name_or_path=cfg["model"].get("decoder_name_or_path"),
+            decoder_local_files_only=cfg["model"].get("decoder_local_files_only", False),
+            decoder_trust_remote_code=cfg["model"].get("decoder_trust_remote_code", False),
+            decoder_revision=cfg["model"].get("decoder_revision"),
+            visual_encoder=cfg["model"].get("visual_encoder", "resnet50"),
+            visual_encoder_backend=cfg["model"].get("visual_encoder_backend", "timm"),
+            visual_pretrained=cfg["model"]["visual_pretrained"],
+            freeze_encoder=cfg["model"].get("freeze_encoder", False),
+            diag_loss_type=cfg["model"].get("diag_loss_type", "bce"),
+            segmentation_cfg=cfg.get("segmentation"),
+        ).to(device)
 
         ckpt = torch.load(args.ckpt, map_location=device)
         state_dict = ckpt.get("state_dict") if isinstance(ckpt, dict) else ckpt
@@ -114,7 +122,6 @@ def main() -> None:
 
     pred_label_csv = cfg["paths"].get("eval_pred_chexpert_csv")
 
-    eval_cfg = cfg.get("evaluation", {})
     amp_enabled = bool(cfg["training"].get("amp", False))
     if args.amp:
         amp_enabled = True
@@ -154,3 +161,4 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
